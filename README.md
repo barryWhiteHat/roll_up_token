@@ -34,7 +34,7 @@ Each token needs to be added before it can be transfered. The EVM maintains a li
 
 To prevent squating attacks, users need to burn 1 ether in order to add a new token.
 
-#### Sudo code
+#### Pseudo code
 
 ##### Smart contract
 
