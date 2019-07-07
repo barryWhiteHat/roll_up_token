@@ -366,3 +366,29 @@ m = H(tx.from, tx.to, tx.amount, tx.fee)
 assert True == eddsa_verify(m, sig.A, sig.R, sig.s)
 ```
 
+
+### Floating point format
+
+Theis is the way it's encoded a 3 and a half decimal digits in a 16 bits floating point. Lets name those bits from MSB to LSB
+
+e4 e3 e2 e1 e0 m9 m8 m7 m6 m5 m4 m3 m2 m1 m0 d 
+
+exp := e0 + e1*2 + e2*2^2 + e3*2^3 + e4*2^4
+
+m := m0 + m1*2 + m2*2^2 + m3*2^3 + m4*2^4 + m5*2^5 + m6*2^6 + m7*2^7 + m8*2^8 + m9*2^9
+
+V := m*10^exp + d* ( (10^exp) >> 1 )
+
+This format allows to use decimal numbers where the 3  most signigicant digits can be any digit [0..9] The forth can be 0 or 5 and an exponent from 1 to 10^31
+
+Example 1: 123000000   
+m = 123 => 0x7b => 0b00 0111 1011
+d = 0 (The forth digit is a 0)
+exp = 6 => 0b00110
+So the Floating point format would be 0b0011000011110110  = 0x30F6
+
+Example 2:  454500
+m = 454 => 0x1c6 => 0b0111000110
+d =1 (The forth digit is a 5)
+exp = 3 => 0x3 => 0b00011
+So the Floating point format is 0b0001101110001101 =   0x1B8D
