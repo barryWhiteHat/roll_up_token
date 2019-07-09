@@ -1,13 +1,35 @@
 # `roll_up` token: SNARK-based multi-ERC20 side chain
-`roll_up` uses zk-SNARK proofs to batch transactions off-chain and update a tree of accounts on-chain, in a provably correct way. 
+`roll_up` uses zk-SNARK proofs to batch transactions off-chain and update a tree of accounts on-chain, in a provably correct way. We rely on Ethereum for data availability guarantees, making sure that each SNARK proof reveals a list of leaves that were changed, and the amount that was transferred inside the EVM.
 
 ![](./images/roll_up.png?raw=true)
 
 A list of accounts and balances are tracked off-chain using a Merkle tree. The owner of a balance can sign a transaction to transfer part or all of their balance to another account. These transactions are batched via SNARK to prove that the state transition was correct. 
 
-We maintain data availability by making sure that each SNARK proof reveals a list of leaves that were changed, and the amount that was transferred inside the EVM. We rely on Ethereum for data availability guarantees. 
-
 The Merkle tree is depth 24, which supports 2^24 accounts. Multiple token types are supported, but each account can only hold a single token type. Multiple tokens can be transferred and traded inside a single block.
+
+- [`roll_up` token: SNARK-based multi-ERC20 side chain](#roll_up-token-snark-based-multi-erc20-side-chain)
+  * [Glossary of terms/variables:](#glossary-of-termsvariables)
+  * [Account leaf format](#account-leaf-format)
+  * [Deposit mechanism](#deposit-mechanism)
+  * [Withdraw mechanism](#withdraw-mechanism)
+    + [Pseudocode](#pseudocode)
+      - [Smart contract](#smart-contract)
+      - [SNARK](#snark)
+  * [Transfer mechanism](#transfer-mechanism)
+  * [Transaction Fees](#transaction-fees)
+    + [Data availability](#data-availability)
+      - [Transactions](#transactions)
+      - [Fees](#fees)
+    + [Dependent Payments](#dependent-payments)
+      - [SNARK pseudocode](#snark-pseudocode)
+  * [New token addition](#new-token-addition)
+  * [Coordinator selection mechanism](#coordinator-selection-mechanism)
+  * [Coordinator selection in parallel](#coordinator-selection-in-parallel)
+  * [Committing a batch](#committing-a-batch)
+  * [Proving a batch](#proving-a-batch)
+  * [Transaction Format](#transaction-format)
+    + [SNARK Transactions](#snark-transactions)
+    + [Floating point format](#floating-point-format)
 
 ## Glossary of terms/variables:
 
@@ -399,32 +421,32 @@ assert True == eddsa_verify(m, sig.A, sig.R, sig.s)
 
 This is the way it's encoded a 3 and a half decimal digits in a 16 bits floating point. Lets name those bits from MSB to LSB
 
-e4 e3 e2 e1 e0 m9 m8 m7 m6 m5 m4 m3 m2 m1 m0 d 
+`e4 e3 e2 e1 e0 m9 m8 m7 m6 m5 m4 m3 m2 m1 m0 d `
 
-exp := e0 + e1*2 + e2*2^2 + e3*2^3 + e4*2^4
+`exp := e0 + e1*2 + e2*2^2 + e3*2^3 + e4*2^4`
 
-m := m0 + m1*2 + m2*2^2 + m3*2^3 + m4*2^4 + m5*2^5 + m6*2^6 + m7*2^7 + m8*2^8 + m9*2^9
+`m := m0 + m1*2 + m2*2^2 + m3*2^3 + m4*2^4 + m5*2^5 + m6*2^6 + m7*2^7 + m8*2^8 + m9*2^9`
 
-V := m*10^exp + d* ( (10^exp) >> 1 )
+`V := m*10^exp + d* ( (10^exp) >> 1 )`
 
 This format allows to use decimal numbers where the 3 most significant digits can be any digit [0..9] The fourth can be 0 or 5 and an exponent from 1 to 10^31
 
 **Example 1: 123000000**
 
-m = 123 => 0x7b => 0b00 0111 1011
+`m = 123 => 0x7b => 0b00 0111 1011`
 
-d = 0 (The fourth digit is a 0)
+`d = 0` (The fourth digit is a 0)
 
-exp = 6 => 0b00110
+`exp = 6 => 0b00110`
 
-So the floating point format would be 0b0011000011110110  = 0x30F6
+So the floating point format would be `0b0011000011110110  = 0x30F6`
 
 **Example 2:  454500**
 
-m = 454 => 0x1c6 => 0b0111000110
+`m = 454 => 0x1c6 => 0b0111000110`
 
-d =1 (The fourth digit is a 5)
+`d = 1` (The fourth digit is a 5)
 
-exp = 3 => 0x3 => 0b00011
+`exp = 3 => 0x3 => 0b00011`
 
-So the floating point format is 0b0001101110001101 =   0x1B8D
+So the floating point format is `0b0001101110001101 = 0x1B8D`
