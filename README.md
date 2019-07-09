@@ -38,7 +38,9 @@ leaf = H(pubkey_x, pubkey_y, balance, nonce, token_type)
  * `nonce`: nonce (32 bits)
  * `token_type`: token type (32 bits)
  
-![](./images/database.png?raw=true)
+<p align="center"> 
+<img src ="./images/database.png?raw=true" width=70%>
+</p>
 SNARK storage database
 
 ## Deposit mechanism
