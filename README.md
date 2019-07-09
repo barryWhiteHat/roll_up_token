@@ -1,7 +1,7 @@
 # `roll_up` token: SNARK-based multi-ERC20 side chain
 `roll_up` uses zk-SNARK proofs to batch transactions off-chain and update a tree of accounts on-chain, in a provably correct way. 
 
-![](https://i.imgur.com/YUEpWSe.png)
+![](./images/roll_up.png?raw=true)
 
 A list of accounts and balances are tracked off-chain using a Merkle tree. The owner of a balance can sign a transaction to transfer part or all of their balance to another account. These transactions are batched via SNARK to prove that the state transition was correct. 
 
@@ -38,7 +38,8 @@ leaf = H(pubkey_x, pubkey_y, balance, nonce, token_type)
  * `nonce`: nonce (32 bits)
  * `token_type`: token type (32 bits)
  
-<img src="https://raw.githubusercontent.com/barryWhiteHat/roll_up_token/master/images/database.png" width=75%>
+![](./images/database.png?raw=true)
+SNARK storage database
 
 ## Deposit mechanism
 Each deposit creates a leaf in the smart contract. The smart contract checks that the `nonce`, `token_type` and `balance` are correct. Anyone can aggregate these deposits into a `deposit_tree` with a `deposit_root`. 
@@ -49,7 +50,7 @@ The coordinator can add these to the current balance tree by:
 2. Replacing this `empty_node` with the `deposit_root`
 3. Using the same Merkle proof to calculate the new `account_root`.
 
-<img src="https://raw.githubusercontent.com/barryWhiteHat/roll_up_token/master/images/deposit.png" width=90%>
+![](./images/deposit.png?raw=true)
 
 ## Withdraw mechanism
 Leaves can be withdrawn on the smart contract as follows. 
