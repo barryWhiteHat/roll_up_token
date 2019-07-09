@@ -1,14 +1,18 @@
 # `roll_up` token: SNARK-based multi-ERC20 side chain
-A Merkle tree is used to track accounts and balances. Multiple token types are supported but each token type requires a separate account. The owner of a balance can sign a transaction to transfer part or all of the balance to another account, these transactions are batched via SNARK to prove that the state transition was correct. 
+`roll_up` uses zk-SNARK proofs to batch transactions off-chain and update a tree of accounts on-chain, in a provably correct way. 
 
-We maintain data availability by making sure that each SNARK proof must reveal a list of leaves that were changed and the amount that was transferred inside the EVM. We rely on Ethereum for data availability guarantees. 
+![](https://i.imgur.com/YUEpWSe.png)
 
-The Merkle tree is depth 24, which supports 2^24 accounts. Each account can only hold a single token type. Multiple tokens can be transferred and traded inside a single block.
+A list of accounts and balances are tracked off-chain using a Merkle tree. The owner of a balance can sign a transaction to transfer part or all of their balance to another account. These transactions are batched via SNARK to prove that the state transition was correct. 
+
+We maintain data availability by making sure that each SNARK proof reveals a list of leaves that were changed, and the amount that was transferred inside the EVM. We rely on Ethereum for data availability guarantees. 
+
+The Merkle tree is depth 24, which supports 2^24 accounts. Multiple token types are supported, but each account can only hold a single token type. Multiple tokens can be transferred and traded inside a single block.
 
 ## Glossary of terms/variables:
 
  * `roll_up`: a method of aggregating multiple signatures and/or Merkle tree updates inside a SNARK. 
- * `coordinator`: a party who aggregates many signatures into a single SNARK transaction. 
+ * `coordinator`: a party who aggregates many signatures into a single SNARK proof. 
  * `circuit`: the code that defines what the SNARK allows.
  * `block`: Ethereum block
  * `epoch`: the number of `roll_up` batches committed to in the smart contract 
@@ -16,6 +20,7 @@ The Merkle tree is depth 24, which supports 2^24 accounts. Each account can only
  * `proof`: a single SNARK proof of a state transition which proves a `batch` 
  * `account_tree`: the Merkle tree that stores a mapping between accounts and balances
  * `account_tree_depth` (24): the number of layers in the `account_tree`
+
 
 ## Account leaf format
 
@@ -25,13 +30,13 @@ Each account is represented by a single leaf in the `account_tree`. It is calcul
 leaf = H(pubkey_x, pubkey_y, balance, nonce, token_type)
 ```
 
-** Inputs: **
+*Inputs:*
 
- * public key X (253 bits)
- * public key Y (253 bits) 
- * balance (128 bits) 
- * nonce (32 bits)
- * token type (32 bits)
+ * `pubkey_x`: public key X (253 bits)
+ * `pubkey_y`: public key Y (253 bits) 
+ * `balance`: balance (128 bits) 
+ * `nonce`: nonce (32 bits)
+ * `token_type`: token type (32 bits)
  
 <img src="https://raw.githubusercontent.com/barryWhiteHat/roll_up_token/master/images/database.png" width=75%>
 
@@ -42,62 +47,73 @@ The coordinator can add these to the current balance tree by:
 
 1. Proving that an `empty_node` at the same depth as the `deposit_tree` is empty in the `account_tree`.
 2. Replacing this `empty_node` with the `deposit_root`
-3. Using the same Merkle proof to calculate the new `account_root`. 
+3. Using the same Merkle proof to calculate the new `account_root`.
 
-![](https://raw.githubusercontent.com/barryWhiteHat/roll_up_token/master/images/deposit.pnghttps://raw.githubusercontent.com/barryWhiteHat/roll_up_token/master/images/deposit.png)
+<img src="https://raw.githubusercontent.com/barryWhiteHat/roll_up_token/master/images/deposit.png" width=90%>
 
 ## Withdraw mechanism
 Leaves can be withdrawn on the smart contract as follows. 
 
 The transaction format is 8 bytes:
  
-   * 3 bytes `from`
-   * 3 bytes `to`
-   * 2 bytes `nonce`
-   * 2 bytes `amount`
+   * `from`: 3 bytes 
+   * `to`: 3 bytes 
+   * `nonce`: 2 bytes 
+   * `amount`: 2 bytes 
 
-The `to` address of `0` is a special address, it is the 'Withdraw' address. Any balance sent to leaf index `0` has a special meaning. The public key for leaf zero does not exist.
+The `to` address of `0` is a reserved address without a private key. Any balance sent to leaf index `0` is understood to be a `withdraw` transation. 
 
-When the SNARK proof is submitted by the coordinator, if the destination is `0` the on-chain 'withdrawable balance' for the `from` leaf index is incremented by the amount, the amount needs converting from floating point to Wei unsigned integer.
+When the SNARK proof is submitted by the coordinator, if the destination is `0` the on-chain 'withdrawable balance' for the `from` leaf index is incremented by the `amount` transferred. (NB: the `amount` needs converting from floating point to Wei unsigned integer.)
 
-The `from` address must have added a `withdraw_address` anyone can then send a transaction that sends the funds to this address.
+On the smart contract, the `from` address must commit to an Ethereum `withdraw_address`. This allows any off-chain `withdraw` transaction made in `roll_up` by the `from` address to be transferred on-chain to the `withdraw_address`.
 
-Because any token type can be sent to the zero address. Transfers to the zero address should avoid the token type check.
-
-Its important that no transfers are able to leave the zero address. 
-1. The public key of the `0` leaf should be generated in such a way that no private key exists. 
-2. The circuit logic should not allow leaf `0` to be the from address
+Because any token type can be sent to the zero address, transfers to the zero address should avoid the token type check. It is important that no transfers are able to leave the zero address, i.e. the circuit logic should not allow leaf `0` to be the `from` address of a transaction.
 
 ### Pseudocode
 
 #### Smart contract 
 ```javascript
     function withdraw(uint epoch, uint i) {
-        // make sure you cannot withdraw until proof has been provided
+        // make sure proof has been provided for given epoch
         require(batches[epoch].finalized == true);
+
         transaction = withdraw[epoch][i];
+
+        // Ethereum address to transfer tokens to
         address = withdraw_address[transaction.from];
-        token withdraw_token[withdraw_address[transaction.from]];
-        address.send(token, to_256_bit_number(transaction.amount));
+
+        // token_type to transfer
+        token_type withdraw_token[withdraw_address[transaction.from]];
+
+        // transfer withdrawn tokens
+        address.send(token_type, to_256_bit_number(transaction.amount));
     }
     
-    function nominate_withdraw_address(proof_of_membership, leaf_address, nominate_withdraw_address) {
-        snark_verify(proof_of_membership);
-        // don't let us update this
+    function nominate_withdraw_address(nomination_proof, leaf_address, withdraw_address) {
+        
+        snark_verify(nomination_proof);
+
+        // cannot change previously committed withdraw_address
         require(withdraw_address[leaf_address] == 0);
-        withdraw_address[leaf_address] = nominate_withdraw_address;    
+
+        // set nominate_withdraw_address for leaf_address
+        withdraw_address[leaf_address] = withdraw_address;    
     }
 ```
 
 #### SNARK
 ``` javascript
-    proof_of_membership()
+    nomination_proof()
         public address
-        public nominated_withdraw_address
+        public withdraw_address
         public account_root
+        public merkle_proof
+        public sig
+
         leaf = leaves[address]
-        merkle_proof(leaf, merkle_tree, address)
-        signatures_validate(sig, nominated_withdraw_address)
+
+        verify_merkle_proof(leaf, account_root, merkle_proof)
+        validate_signature(sig, withdraw_address, address)
 ```
 
 ## Transfer mechanism
@@ -109,7 +125,7 @@ We have an `account_tree` with mapping of public key to `nonce` and `balance` of
    * `amount` - Balance to transfer (16 bit unsigned)
    * `fee` - The fee to pay the coordinator
  * `sig` - Dictionary containing signature
-   * `A` - Public point of signers key
+   * `A` - Public point of signer's key
    * `R` - Public point for EdDSA signature
    * `s` - Scalar for EdDSA signature (254bit in $\mathbb{F}_p$)
 
@@ -139,14 +155,13 @@ So we force the coordinator to commit to the fees in the EVM and then validate t
 ### Data availability
 
 #### Transactions
-This approach is based [upon](https://ethresear.ch/t/on-chain-scaling-to-potentially-500-tx-sec-through-mass-tx-validation/3477)
+This approach is based upon the scheme described [here](https://ethresear.ch/t/on-chain-scaling-to-potentially-500-tx-sec-through-mass-tx-validation/3477).
 
 Each transaction record is 8 bytes, and consists of:
 
 1. `from` index (3 bytes)
 2. `to` index   (3 bytes)
 3. `amount`    (2 bytes) 
-
 
 The `from` and `to` offsets specify the leaves within the tree, the size required for the offset depends on the depth of the tree. `TreeCapacity` $= 2^\texttt{tree\_depth}$, offset size in bits is $log_2(\texttt{tree\_depth})$.
 
@@ -283,8 +298,6 @@ contract coordinator_orderer {
 
     //slash an coordinator for failing to create a proof
     function slash() {
-        //if the coordinator has waiting too long
-        //to make a proof slash them
 
     }
 ```
