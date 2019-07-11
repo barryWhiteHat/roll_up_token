@@ -82,8 +82,7 @@ Leaves can be withdrawn on the smart contract as follows.
 The transaction format is 8 bytes:
  
    * `from`: 3 bytes 
-   * `to`: 3 bytes 
-   * `nonce`: 2 bytes 
+   * `to`: 3 bytes  
    * `amount`: 2 bytes 
 
 The `to` address of `0` is a reserved address without a private key. Any balance sent to leaf index `0` is understood to be a `withdraw` transation. 
